@@ -1,164 +1,114 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
-	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-// SSHAuthMethod defines supported SSH authentication types
-type SSHAuthMethod int
-
-const (
-	SSHAuthPassword SSHAuthMethod = iota
-	SSHAuthPrivateKeyPath
-	SSHAuthPrivateKeyBytes
-	SSHAuthAgent
-)
-
-// Auth defines SSH authentication configuration
-type Auth struct {
-	Password       string // optional password
-	KeyPath        string // optional path to private key file
-	KeyBytes       []byte // optional data of private key file
-	Passphrase     string // optional, if private key is encrypted
-	KnownHostsPath string // optional path to known_hosts file to check real SSH host keys
-	Methods        []SSHAuthMethod
+// SSHAuth holds the private key, password, and agent flags for authentication
+type SSHAuth struct {
+	password   string // optional password
+	keyPath    string // optional path to private key file
+	keyBytes   []byte // optional data of private key file
+	passphrase string // optional, if private key is encrypted
+	useAgent   bool   // optional
 }
 
-// withPassword adds password authentication
-func (a *Auth) withPassword(password string) *Auth {
-	a.Password = password
-	a.Methods = append(a.Methods, SSHAuthPassword)
-	return a
-}
-
-// withPrivateKeyPath adds private key file authentication
-func (a *Auth) withPrivateKeyPath(path, passphrase string) *Auth {
-	a.KeyPath = path
-	a.Passphrase = passphrase
-	a.Methods = append(a.Methods, SSHAuthPrivateKeyPath)
-	return a
-}
-
-// withPrivateKeyBytes adds private key bytes authentication
-func (a *Auth) withPrivateKeyBytes(privateKey []byte, passphrase string) *Auth {
-	a.KeyBytes = privateKey
-	a.Passphrase = passphrase
-	a.Methods = append(a.Methods, SSHAuthPrivateKeyBytes)
-	return a
-}
-
-// withAgent adds SSH agent authentication. (Unix systems only)
-func (a *Auth) withAgent() *Auth {
-	a.Methods = append(a.Methods, SSHAuthAgent)
-	return a
-}
-
-// AuthMethods returns prepared []ssh.AuthMethod based on enabled methods
-func (a *Auth) AuthMethods() ([]ssh.AuthMethod, error) {
-	var methods []ssh.AuthMethod
-
-	for _, method := range a.Methods {
-		authMethod, err := a.authMethodForType(method)
-		if err != nil {
-			return nil, err
-		}
-		methods = append(methods, authMethod)
+// withPassword configures password-based auth
+func (a *SSHAuth) withPassword(password string) error {
+	if len(password) == 0 {
+		return fmt.Errorf("password empty")
 	}
-	if len(methods) == 0 {
-		return nil, errors.New("no valid auth methods configured")
-	}
-	return methods, nil
+	a.password = password
+	return nil
 }
 
-// HostKeyCallback returns a host key verification callback
-func (a *Auth) HostKeyCallback() (ssh.HostKeyCallback, error) {
-	if a.KnownHostsPath != "" {
-		return knownhosts.New(a.KnownHostsPath)
+// withPrivateKeyPath configures file-based key authentication
+func (a *SSHAuth) withPrivateKeyPath(path, passphrase string) error {
+	if len(path) == 0 {
+		return fmt.Errorf("private key path empty")
 	}
-	return ssh.InsecureIgnoreHostKey(), nil
+	a.keyPath = path
+	a.passphrase = passphrase
+	return nil
 }
 
-func (a *Auth) authMethodForType(method SSHAuthMethod) (ssh.AuthMethod, error) {
-	switch method {
-	case SSHAuthPassword:
-		return a.passwordAuthMethod()
-	case SSHAuthPrivateKeyPath:
-		return a.privateKeyPathAuthMethod()
-	case SSHAuthPrivateKeyBytes:
-		return a.privateKeyBytesAuthMethod()
-	case SSHAuthAgent:
-		return a.signerFromAgent()
-
-	default:
-		return nil, fmt.Errorf("unknown auth method: %v", method)
+// withPrivateKeyBytes configures in-memory key authentication
+func (a *SSHAuth) withPrivateKeyBytes(privateKey []byte, passphrase string) error {
+	if len(privateKey) == 0 {
+		return fmt.Errorf("private key bytes empty")
 	}
+	a.keyBytes = privateKey
+	a.passphrase = passphrase
+	return nil
 }
 
-// passwordAuthMethod returns ssh.AuthMethod based on password
-func (a *Auth) passwordAuthMethod() (ssh.AuthMethod, error) {
-	if a.Password == "" {
-		return nil, errors.New("password is empty")
-	}
-	return ssh.Password(a.Password), nil
+// withAgent adds SSH agent auth. (Unix systems only)
+func (a *SSHAuth) withAgent() error {
+	a.useAgent = true
+	return nil
 }
 
-// privateKeyPathAuthMethod returns ssh.AuthMethod based on private key path
-func (a *Auth) privateKeyPathAuthMethod() (ssh.AuthMethod, error) {
-	if a.KeyPath == "" {
-		return nil, errors.New("private key path is empty")
-	}
-	signer, err := a.signerFromKeyFile(a.KeyPath, a.Passphrase)
+// buildAgentAuth dials the SSH agent and returns its ssh.AuthMethod (Unix systems only)
+func (a *SSHAuth) buildAgentAuth() (ssh.AuthMethod, error) {
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	conn, err := net.Dial("unix", sock)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load private key from file: %w", err)
-	}
-	return ssh.PublicKeys(signer), nil
-}
-
-// privateKeyBytesAuthMethod returns ssh.AuthMethod based on private key bytes
-func (a *Auth) privateKeyBytesAuthMethod() (ssh.AuthMethod, error) {
-	if len(a.KeyBytes) == 0 {
-		return nil, errors.New("private key bytes are empty")
-	}
-	signer, err := a.signerFromKeyBytes()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load private key from bytes: %w", err)
-	}
-	return ssh.PublicKeys(signer), nil
-}
-
-// signerFromKeyFile returns signer from private key file. If Auth contain Passphrase - decrypt key
-func (a *Auth) signerFromKeyFile(path, passphrase string) (ssh.Signer, error) {
-	keyData, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	if len(a.Passphrase) > 0 {
-		return ssh.ParsePrivateKeyWithPassphrase(keyData, []byte(passphrase))
-	}
-	return ssh.ParsePrivateKey(keyData)
-}
-
-// signerFromKeyBytes returns signer from private key bytes. If Auth contain Passphrase - decrypt key
-func (a *Auth) signerFromKeyBytes() (ssh.Signer, error) {
-	if len(a.Passphrase) > 0 {
-		return ssh.ParsePrivateKeyWithPassphrase(a.KeyBytes, []byte(a.Passphrase))
-	}
-	return ssh.ParsePrivateKey(a.KeyBytes)
-}
-
-// signerFromAgent returns ssh.AuthMethod based on agent (Unix systems only)
-func (a *Auth) signerFromAgent() (ssh.AuthMethod, error) {
-	conn, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
-	if err != nil {
-		return nil, fmt.Errorf("could not find ssh agent: %w", err)
+		return nil, fmt.Errorf("dial agent: %w", err)
 	}
 	ag := agent.NewClient(conn)
 	return ssh.PublicKeysCallback(ag.Signers), nil
+}
+
+// authMethods returns a slice of ssh.AuthMethod in the order:
+// agent → private key (file or bytes) → password.
+// Returns an error if none succeed
+func (a *SSHAuth) authMethods() ([]ssh.AuthMethod, error) {
+	var methods []ssh.AuthMethod
+
+	if a.useAgent {
+		if m, err := a.buildAgentAuth(); err == nil {
+			methods = append(methods, m)
+		}
+	}
+	if len(a.keyPath) > 0 {
+		keyData, fileErr := os.ReadFile(a.keyPath)
+		if fileErr != nil {
+			return nil, fmt.Errorf("read key file: %w", fileErr)
+		}
+		signer, err := parseSigner(keyData, a.passphrase)
+		if err != nil {
+			return methods, fmt.Errorf("read key file: %w", err)
+		}
+		methods = append(methods, ssh.PublicKeys(signer))
+	}
+	if len(a.keyBytes) > 0 {
+		signer, err := parseSigner(a.keyBytes, a.passphrase)
+		if err != nil {
+			return methods, fmt.Errorf("read key bytes: %w", err)
+		}
+		methods = append(methods, ssh.PublicKeys(signer))
+	}
+
+	if len(a.password) > 0 {
+		methods = append(methods, ssh.Password(a.password))
+	}
+
+	if len(methods) == 0 {
+		return methods, fmt.Errorf("no valid auth methods available")
+	}
+
+	return methods, nil
+}
+
+// parseSigner parses PEM private key, decrypting with passphrase if any.
+func parseSigner(data []byte, passphrase string) (ssh.Signer, error) {
+	if len(passphrase) > 0 {
+		return ssh.ParsePrivateKeyWithPassphrase(data, []byte(passphrase))
+	}
+	return ssh.ParsePrivateKey(data)
 }
