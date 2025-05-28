@@ -90,6 +90,37 @@ func (cl *Client) keepalive() {
 	}
 }
 
+// Session a wrapper over *gossh.Session that
+// frees a slot from sessionLimiter when closed.
+type Session struct {
+	*gossh.Session
+	client *Client
+}
+
+func (w *Session) Close() error {
+	err := w.Session.Close()
+	<-w.client.sessionLimiter
+	return err
+}
+
+func (cl *Client) OpenSession(ctx context.Context) (*Session, error) {
+	select {
+	case cl.sessionLimiter <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	cl.mu.Lock()
+	sess, err := cl.client.NewSession()
+	cl.mu.Unlock()
+	if err != nil {
+		<-cl.sessionLimiter
+		return nil, err
+	}
+
+	return &Session{Session: sess, client: cl}, nil
+}
+
 func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts ...RunOption) (*parser.RawResult, error) {
 	if cl == nil || cl.client == nil {
 		return nil, utils.ErrSessionNotOpen
@@ -103,23 +134,13 @@ func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts .
 	runCfg := newRunConfig(cl.cfg.remoteWorkdir, cl.cfg.envVars, opts...)
 	runCfg.usePTY = cl.requiresPTY(cmd.String())
 
-	select {
-	case cl.sessionLimiter <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-
-	cl.mu.Lock()
-	sess, err := cl.client.NewSession()
-	cl.mu.Unlock()
+	sess, err := cl.OpenSession(ctx)
 	if err != nil {
-		<-cl.sessionLimiter
 		return result, fmt.Errorf("open session: %w", err)
 	}
-	defer func() { <-cl.sessionLimiter }()
 	defer sess.Close()
 
-	if err := cl.requestPTY(sess, runCfg); err != nil {
+	if err := cl.requestPTY(sess.Session, runCfg); err != nil {
 		return result, err
 	}
 
@@ -176,26 +197,29 @@ func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts .
 	case <-ctx.Done():
 		sess.Close()
 		wg.Wait()
-		result.Err = ctx.Err()
-		result.ExitCode = -1
-		return result, ctx.Err()
-
-	case err := <-done:
-		wg.Wait()
+		err = ctx.Err()
 		result.Err = err
+		result.ExitCode = -1
+		return result, err
+
+	case e := <-done:
+		wg.Wait()
 		result.Stdout = runCfg.bufOut.String()
 		result.Stderr = runCfg.bufErr.String()
 
 		var exitErr *gossh.ExitError
-		if errors.As(err, &exitErr) {
+		if errors.As(e, &exitErr) {
 			code := exitErr.ExitStatus()
 			msg := cl.mapper.Lookup(code)
-			result.ExitCode = code
-			result.Err = fmt.Errorf("remote command failed (%s): %s: %w", msg, result.Stderr, err)
-		} else if err != nil {
-			result.ExitCode = -1
+			err = fmt.Errorf("remote command failed (%s): %s: %w", msg, result.Stderr, e)
 			result.Err = err
+			result.ExitCode = code
+		} else if e != nil {
+			err = e
+			result.Err = e
+			result.ExitCode = -1
 		} else {
+			err = nil
 			result.ExitCode = 0
 		}
 	}

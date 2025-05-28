@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 
@@ -97,11 +98,11 @@ func (t *SCPTransfer) Copy(ctx context.Context, spec *rexec.FileSpec, opts ...SC
 			target,
 		),
 	)
-	if err := rexec.RunNoResult(ctx, t.client, mkdirCmd); err != nil {
+	if err := rexec.RunNoResult[RunOption](ctx, t.client, mkdirCmd); err != nil {
 		return fmt.Errorf("remote mkdir: %w", err)
 	}
 
-	sess, err := t.client.client.NewSession()
+	sess, err := t.client.OpenSession(ctx)
 	if err != nil {
 		return fmt.Errorf("open ssh session: %w", err)
 	}
@@ -148,11 +149,17 @@ func (t *SCPTransfer) Copy(ctx context.Context, spec *rexec.FileSpec, opts ...SC
 		return fmt.Errorf("close stdinPipe: %w", err)
 	}
 
-	if err := sess.Wait(); err != nil {
+	if waitErr := sess.Wait(); waitErr != nil {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) {
+			code := exitErr.ExitCode()
+			msg := t.client.mapper.Lookup(code)
+			return fmt.Errorf("scp failed (%s): %w", msg, waitErr)
+		}
 		if drainErr := <-errCh; drainErr != nil {
 			return fmt.Errorf("scp failed: %w -- %s", drainErr, errBuf.String())
 		}
-		return fmt.Errorf("scp failed: %w -- %s", err, errBuf.String())
+		return fmt.Errorf("scp failed: %w -- %s", waitErr, errBuf.String())
 	}
 	<-errCh
 	return nil

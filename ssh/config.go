@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultMaxSessions = 5
+	defaultMaxSessions = 1
 	defaultRetryCount  = 3
 	defaultTimeout     = 30 * time.Second
 	defaultRetryDelay  = 5 * time.Second
@@ -158,6 +158,18 @@ func WithWorkdir(path string) ConfigOption {
 			return fmt.Errorf("workdir path cannot be empty")
 		}
 		cfg.remoteWorkdir = path
+		return nil
+	}
+}
+
+// WithMaxSessions - set max concurrent sessions for connection. You can see it on host in /etc/ssh/sshd_config.
+// Recommend value is from 1 to 4
+func WithMaxSessions(maxSessions int) ConfigOption {
+	return func(cfg *Config) error {
+		if maxSessions <= 0 || maxSessions > 10 {
+			return fmt.Errorf("max sessions must be between 1 and 10")
+		}
+		cfg.maxSessions = maxSessions
 		return nil
 	}
 }

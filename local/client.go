@@ -26,9 +26,9 @@ type Client struct {
 	mapper *utils.ExitCodeMapper
 }
 
-// NewSession creates a LocalSession with the given config
+// NewClient creates a LocalSession with the given config
 // If cfg==nil - config.NewConfig() will be used
-func NewSession(cfg *Config) *Client {
+func NewClient(cfg *Config) *Client {
 	if cfg == nil {
 		cfg = NewConfig()
 	}
