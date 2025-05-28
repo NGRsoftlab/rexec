@@ -40,13 +40,6 @@ func WithParser(p parser.Parser) CmdOption {
 	}
 }
 
-// WithTimeout sets a per-command timeout
-// func WithTimeout(d time.Duration) CmdOption {
-// 	return func(c *Command) {
-// 		c.Timeout = d
-// 	}
-// }
-
 // String renders the final shell command by applying arguments
 func (c *Command) String() string {
 	return fmt.Sprintf(c.Template, c.Args...)

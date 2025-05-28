@@ -6,8 +6,9 @@ import (
 )
 
 var (
-	ErrSessionClosed = errors.New("session closed")
-	ErrContextDone   = errors.New("context cancelled or deadline exceeded")
+	ErrSessionClosed  = errors.New("session closed")
+	ErrSessionNotOpen = errors.New("session not open")
+	ErrContextDone    = errors.New("context cancelled or deadline exceeded")
 )
 
 type ExitCodeMapper struct {

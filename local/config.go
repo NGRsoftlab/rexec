@@ -1,26 +1,26 @@
-package config
+package local
 
 import (
 	"fmt"
 	"os"
 )
 
-// LocalConfig holds settings for a local session
-type LocalConfig struct {
+// Config holds settings for a local session
+type Config struct {
 	WorkDir string            // optional: working directory for the command
 	EnvVars map[string]string // optional: extra environment variables
 }
 
-// NewLocalConfig creates a LocalConfig
-func NewLocalConfig() *LocalConfig {
-	return &LocalConfig{
+// NewConfig creates a config
+func NewConfig() *Config {
+	return &Config{
 		WorkDir: "",
 		EnvVars: make(map[string]string),
 	}
 }
 
 // WithWorkDir sets the working directory for the command
-func (lc *LocalConfig) WithWorkDir(workdir string) *LocalConfig {
+func (lc *Config) WithWorkDir(workdir string) *Config {
 	if workdir != "" {
 		lc.WorkDir = workdir
 	}
@@ -28,14 +28,14 @@ func (lc *LocalConfig) WithWorkDir(workdir string) *LocalConfig {
 }
 
 // WithEnvVars merges in extra environment variables.
-func (lc *LocalConfig) WithEnvVars(env map[string]string) *LocalConfig {
+func (lc *Config) WithEnvVars(env map[string]string) *Config {
 	for k, v := range env {
 		lc.EnvVars[k] = v
 	}
 	return lc
 }
 
-func (lc *LocalConfig) Validate() error {
+func (lc *Config) Validate() error {
 	if lc.WorkDir == "" {
 		return nil
 	}

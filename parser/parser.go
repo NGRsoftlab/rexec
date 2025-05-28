@@ -18,3 +18,14 @@ type RawResult struct {
 	Duration time.Duration
 	Err      error
 }
+
+func NewRawResult(shellCmd string) *RawResult {
+	return &RawResult{
+		Command:  shellCmd,
+		Stdout:   "",
+		Stderr:   "",
+		ExitCode: 0,
+		Duration: 0,
+		Err:      nil,
+	}
+}

@@ -1,4 +1,4 @@
-package rexec_test
+package local_test
 
 import (
 	"context"
@@ -7,9 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ngrsoftlab/rexec"
 	"github.com/ngrsoftlab/rexec/command"
-	"github.com/ngrsoftlab/rexec/config"
+	"github.com/ngrsoftlab/rexec/local"
 )
 
 func TestLocalSession_Run(t *testing.T) {
@@ -19,7 +18,7 @@ func TestLocalSession_Run(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sess := rexec.NewLocalSession(config.NewLocalConfig().WithWorkDir(tmp))
+	sess := local.NewSession(local.NewConfig().WithWorkDir(tmp))
 
 	tests := []struct {
 		name       string

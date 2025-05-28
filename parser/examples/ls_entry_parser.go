@@ -69,7 +69,7 @@ func (e *LsEntry) ParsePermissions() (os.FileMode, error) {
 // LsParser implements parser.Parser for `ls -la` output.
 type LsParser struct{}
 
-// Parse splits raw.Stdout into lines, skips the total line,
+// Parse splits raw.stdout into lines, skips the total line,
 // and fills dst.(*[]LsEntry) with parsed entries.
 func (p *LsParser) Parse(raw *parser.RawResult, dst any) error {
 	slicePtr, ok := dst.(*[]LsEntry)
