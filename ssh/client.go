@@ -103,12 +103,17 @@ func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts .
 	runCfg := newRunConfig(cl.cfg.remoteWorkdir, cl.cfg.envVars, opts...)
 	runCfg.usePTY = cl.requiresPTY(cmd.String())
 
-	cl.mu.Lock()
-	cl.sessionLimiter <- struct{}{}
+	select {
+	case cl.sessionLimiter <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
+	cl.mu.Lock()
 	sess, err := cl.client.NewSession()
 	cl.mu.Unlock()
 	if err != nil {
+		<-cl.sessionLimiter
 		return result, fmt.Errorf("open session: %w", err)
 	}
 	defer func() { <-cl.sessionLimiter }()

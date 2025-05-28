@@ -10,14 +10,15 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-type ConfigOption func(*Config) error
-
-var (
-	defaultTimeout    = 30 * time.Second
-	defaultRetryCount = 3
-	defaultRetryDelay = 5 * time.Second
-	defaultKeepAlive  = 30 * time.Second
+const (
+	defaultMaxSessions = 5
+	defaultRetryCount  = 3
+	defaultTimeout     = 30 * time.Second
+	defaultRetryDelay  = 5 * time.Second
+	defaultKeepAlive   = 30 * time.Second
 )
+
+type ConfigOption func(*Config) error
 
 // Config contains settings for an SSH connection
 type Config struct {
@@ -51,7 +52,7 @@ func NewConfig(user, host string, port int, opts ...ConfigOption) (*Config, erro
 		keepAlive:     defaultKeepAlive,
 		envVars:       make(map[string]string),
 		auth:          &auth{},
-		maxSessions:   1,
+		maxSessions:   defaultMaxSessions,
 	}
 
 	for _, opt := range opts {
