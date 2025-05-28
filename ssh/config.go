@@ -116,9 +116,6 @@ func WithKeepAlive(keepAlive time.Duration) ConfigOption {
 
 // WithSudoPassword sets the password to use for sudo -S on the remote Host
 func WithSudoPassword(password string) ConfigOption {
-	// Явный признак того, что нужно ввести sudo пароль, является наличие sudo в шаблоне команды,
-	// это нужно отслеживать, мониторить удаленный терминал или еще как-то, когда система запросит
-	// пароль от судо и в потоковом режиме вводить пароль от суперпользователя.
 	return func(cfg *Config) error {
 		if password == "" {
 			return fmt.Errorf("password must not be empty")

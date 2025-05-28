@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	defaultBufSize    = 2 << 14
-	defaultFolderPerm = 0o755
+	defaultSCPBufferSize = 2 << 14
+	defaultSCPDirMode    = 0o755
 )
 
 // SCPOption configures SCPTransfer behavior
@@ -30,20 +30,20 @@ type scpConfig struct {
 	folderMode os.FileMode // mode for intermediate directories
 }
 
-func newScpConfig(specMode os.FileMode, opts ...SCPOption) *scpConfig {
+func newScpConfig(mode os.FileMode, opts ...SCPOption) *scpConfig {
 	cfg := &scpConfig{
-		folderMode: defaultFolderPerm,
-		bufSize:    defaultBufSize,
+		folderMode: defaultSCPDirMode,
+		bufSize:    defaultSCPBufferSize,
 		scpBinPath: "scp",
+	}
+	if mode > 0 {
+		cfg.folderMode = mode
 	}
 
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
-	if specMode != 0 {
-		cfg.folderMode = specMode
-	}
 	return cfg
 }
 
@@ -62,13 +62,6 @@ func WithBufferSize(bufSize int) SCPOption {
 		if bufSize > 0 {
 			config.bufSize = bufSize
 		}
-	}
-}
-
-// WithFolderPermission sets permissions for intermediate directories (default 0755)
-func WithFolderPermission(mode os.FileMode) SCPOption {
-	return func(config *scpConfig) {
-		config.folderMode = mode
 	}
 }
 
@@ -94,7 +87,7 @@ func (t *SCPTransfer) Copy(ctx context.Context, spec *rexec.FileSpec, opts ...SC
 	mkdirCmd := command.New(
 		"mkdir -p -m %04o %s",
 		command.WithArgs(
-			cfg.folderMode.Perm(),
+			spec.FolderMode,
 			target,
 		),
 	)
@@ -222,7 +215,7 @@ func readAck(ctx context.Context, r *bufio.Reader) error {
 
 var bufPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, defaultBufSize)
+		return make([]byte, defaultSCPBufferSize)
 	},
 }
 
