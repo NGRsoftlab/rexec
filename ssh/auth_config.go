@@ -10,16 +10,16 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-// auth holds the private key, password, and agent flags for authentication
+// auth holds credentials and flags for SSH authentication methods
 type auth struct {
-	password   string // optional password
-	keyPath    string // optional path to private key file
-	keyBytes   []byte // optional data of private key file
-	passphrase string // optional, if private key is encrypted
-	useAgent   bool   // optional
+	password   string // optional: password for password-based auth
+	keyPath    string // optional: filesystem path to private key
+	keyBytes   []byte // optional: in-memory private key data
+	passphrase string // optional: passphrase for encrypted private key
+	useAgent   bool   // optional: whether to try SSH agent auth
 }
 
-// withPassword configures password-based auth
+// withPassword enables password-based authentication
 func (a *auth) withPassword(password string) error {
 	if len(password) == 0 {
 		return fmt.Errorf("password empty")
@@ -28,7 +28,7 @@ func (a *auth) withPassword(password string) error {
 	return nil
 }
 
-// withPrivateKeyPath configures file-based key authentication
+// withPrivateKeyPath sets up authentication using a private key file
 func (a *auth) withPrivateKeyPath(path, passphrase string) error {
 	if len(path) == 0 {
 		return fmt.Errorf("private key path empty")
@@ -38,7 +38,7 @@ func (a *auth) withPrivateKeyPath(path, passphrase string) error {
 	return nil
 }
 
-// withPrivateKeyBytes configures in-memory key authentication
+// withPrivateKeyBytes sets up authentication using in-memory private key data
 func (a *auth) withPrivateKeyBytes(privateKey []byte, passphrase string) error {
 	if len(privateKey) == 0 {
 		return fmt.Errorf("private key bytes empty")
@@ -48,13 +48,13 @@ func (a *auth) withPrivateKeyBytes(privateKey []byte, passphrase string) error {
 	return nil
 }
 
-// withAgent adds SSH agent auth. (Unix systems only)
+// withAgent enables SSH agent authentication (UNIX only)
 func (a *auth) withAgent() error {
 	a.useAgent = true
 	return nil
 }
 
-// buildAgentAuth dials the SSH agent and returns its ssh.AuthMethod (Unix systems only)
+// buildAgentAuth connects to the SSH agent and returns its AuthMethod
 func (a *auth) buildAgentAuth() (ssh.AuthMethod, error) {
 	sock := os.Getenv("SSH_AUTH_SOCK")
 	conn, err := net.Dial("unix", sock)
@@ -65,9 +65,9 @@ func (a *auth) buildAgentAuth() (ssh.AuthMethod, error) {
 	return ssh.PublicKeysCallback(ag.Signers), nil
 }
 
-// authMethods returns a slice of ssh.AuthMethod in the order:
-// agent → private key (file or bytes) → password.
-// Returns an error if none succeed
+// authMethods collects available ssh.AuthMethod in order of preference:
+// agent → private key (file, then bytes) → password (keyboard-interactive + password).
+// Returns an error if no methods are valid.
 func (a *auth) authMethods() ([]ssh.AuthMethod, error) {
 	methods := make([]ssh.AuthMethod, 0, 4)
 	var errors []string
@@ -129,7 +129,7 @@ func (a *auth) authMethods() ([]ssh.AuthMethod, error) {
 	return methods, nil
 }
 
-// parseSigner parses PEM private key, decrypting with passphrase if any.
+// parseSigner parses a PEM-encoded private key, decrypting if a passphrase is provided
 func parseSigner(data []byte, passphrase string) (ssh.Signer, error) {
 	if len(passphrase) > 0 {
 		signer, err := ssh.ParsePrivateKeyWithPassphrase(data, []byte(passphrase))

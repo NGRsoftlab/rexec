@@ -5,13 +5,13 @@ import (
 	"os"
 )
 
-// Config holds settings for a local session
+// Config holds settings for running commands locally
 type Config struct {
-	WorkDir string            // optional: working directory for the command
-	EnvVars map[string]string // optional: extra environment variables
+	WorkDir string            // directory in which to execute commands
+	EnvVars map[string]string // additional environment variables to set
 }
 
-// NewConfig creates a config
+// NewConfig creates a Config with defaults (no workdir, empty env)
 func NewConfig() *Config {
 	return &Config{
 		WorkDir: "",
@@ -19,7 +19,7 @@ func NewConfig() *Config {
 	}
 }
 
-// WithWorkDir sets the working directory for the command
+// WithWorkDir sets the working directory if non-empty
 func (lc *Config) WithWorkDir(workdir string) *Config {
 	if workdir != "" {
 		lc.WorkDir = workdir
@@ -27,7 +27,7 @@ func (lc *Config) WithWorkDir(workdir string) *Config {
 	return lc
 }
 
-// WithEnvVars merges in extra environment variables.
+// WithEnvVars adds or overrides environment variables
 func (lc *Config) WithEnvVars(env map[string]string) *Config {
 	for k, v := range env {
 		lc.EnvVars[k] = v
@@ -35,6 +35,7 @@ func (lc *Config) WithEnvVars(env map[string]string) *Config {
 	return lc
 }
 
+// Validate checks that WorkDir exists and is a directory
 func (lc *Config) Validate() error {
 	if lc.WorkDir == "" {
 		return nil

@@ -4,17 +4,18 @@ import (
 	"io"
 )
 
-// RunOption - option that changes localRunConfig only for one call to Run
+// RunOption modifies settings for a single Run invocation
 type RunOption func(*localRunConfig)
 
-// localRunConfig collects startup parameters (working directory + environment variables)
+// localRunConfig holds per-call execution settings
 type localRunConfig struct {
-	dir     string
-	envVars map[string]string
-	stdout  io.Writer
-	stderr  io.Writer
+	dir     string            // working directory for this run
+	envVars map[string]string // environment variables for this run
+	stdout  io.Writer         // custom stdout writer (nil => buffer)
+	stderr  io.Writer         // custom stderr writer (nil => buffer)
 }
 
+// newRunConfig creates a localRunConfig from base settings and applies opts
 func newRunConfig(baseDir string, baseEnv map[string]string, opts ...RunOption) *localRunConfig {
 	runConfig := &localRunConfig{
 		dir:     baseDir,
@@ -31,28 +32,28 @@ func newRunConfig(baseDir string, baseEnv map[string]string, opts ...RunOption) 
 	return runConfig
 }
 
-// WithWorkdir sets the working directory for one run
+// WithWorkdir sets a custom working directory for one Run
 func WithWorkdir(workdir string) RunOption {
 	return func(rc *localRunConfig) {
 		rc.dir = workdir
 	}
 }
 
-// WithEnvVar adds or overrides one environment variable for a one run
+// WithEnvVar adds or overrides one environment variable for a single Run
 func WithEnvVar(key, value string) RunOption {
 	return func(rc *localRunConfig) {
 		rc.envVars[key] = value
 	}
 }
 
-// WithStdout sends live stdout to w instead of buffering.
+// WithStdout directs live stdout to the given writer instead of buffering
 func WithStdout(stdout io.Writer) RunOption {
 	return func(rc *localRunConfig) {
 		rc.stdout = stdout
 	}
 }
 
-// WithStderr sends live stderr to w instead of buffering.
+// WithStderr directs live stderr to the given writer instead of buffering
 func WithStderr(stderr io.Writer) RunOption {
 	return func(rc *localRunConfig) {
 		rc.stderr = stderr

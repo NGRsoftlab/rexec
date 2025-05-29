@@ -4,21 +4,22 @@ import (
 	"time"
 )
 
-// Parser parses a *RawResult into a user-defined structure.
+// Parser converts a RawResult into a user-defined value
 type Parser interface {
 	Parse(rawResult *RawResult, dst any) error
 }
 
-// RawResult captures the execution outcome
+// RawResult holds the outcome of running a command
 type RawResult struct {
-	Command  string
-	Stdout   string
-	Stderr   string
-	ExitCode int
-	Duration time.Duration
-	Err      error
+	Command  string        // the exact command string executed
+	Stdout   string        // collected standard output
+	Stderr   string        // collected standard error
+	ExitCode int           // process exit code
+	Duration time.Duration // time taken to run the command
+	Err      error         // any error from execution or parsing
 }
 
+// NewRawResult initializes a RawResult for the given shell command
 func NewRawResult(shellCmd string) *RawResult {
 	return &RawResult{
 		Command:  shellCmd,

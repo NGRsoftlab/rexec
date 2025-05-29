@@ -8,25 +8,30 @@ import (
 	"os"
 )
 
+// FileTransfer defines an interface for copying files according to a FileSpec
 type FileTransfer[O any] interface {
+	// Copy transfers the file described by spec, applying any transfer options
 	Copy(ctx context.Context, spec *FileSpec, opts ...O) error
 }
 
-// type FileTransferOption func(*TransferContext)
-
+// FileContent holds the source of file data for transfer.
+// Only one of Data, SourcePath, or Reader should be set
 type FileContent struct {
-	Reader     io.Reader // stream
-	Data       []byte    // buffer
-	SourcePath string    // filepath
-}
-type FileSpec struct {
-	TargetDir  string // destination path
-	Filename   string
-	Mode       os.FileMode
-	FolderMode os.FileMode // mode for intermediate dirs
-	Content    *FileContent
+	Reader     io.Reader // stream to read file data from
+	Data       []byte    // in-memory file data
+	SourcePath string    // path to the file on disk
 }
 
+// FileSpec describes where and how to create a file on the target
+type FileSpec struct {
+	TargetDir  string       // destination directory
+	Filename   string       // name of the file to create
+	Mode       os.FileMode  // file permission bits
+	FolderMode os.FileMode  // permission bits for any created directories
+	Content    *FileContent // file data and source information
+}
+
+// Validate checks that the spec has all required fields and content
 func (t *FileSpec) Validate() error {
 	if t == nil {
 		return fmt.Errorf("file specification empty")
@@ -46,6 +51,8 @@ func (t *FileSpec) Validate() error {
 	return nil
 }
 
+// ReaderAndSize yields an io.ReadCloser and its length based on which
+// content field is set: Data, SourcePath, or Reader
 func (t *FileContent) ReaderAndSize() (io.ReadCloser, int64, error) {
 	switch {
 	case t == nil:

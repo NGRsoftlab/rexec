@@ -21,24 +21,23 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 )
 
-// interface guard
+// interface guard: ensure Client satisfies rexec.Client[RunOption]
 var _ rexec.Client[RunOption] = (*Client)(nil)
 
-// Client runs commands over an established SSH TCP connection.
+// Client runs shell commands over an SSH connection
 type Client struct {
-	cfg    *Config
-	client *gossh.Client
+	cfg    *Config       // SSH connection settings
+	client *gossh.Client // active SSH client
 
-	closeOnce      sync.Once
-	mu             sync.Mutex    // client guard
-	keepAliveChan  chan struct{} // signals keepalive to stop
-	sessionLimiter chan struct{}
-	mapper         *utils.ExitCodeMapper
+	closeOnce      sync.Once             // ensures close actions run only once
+	mu             sync.Mutex            // guards client for concurrent use
+	keepAliveChan  chan struct{}         // signals keepalive goroutine to stop
+	sessionLimiter chan struct{}         // limits concurrent sessions
+	mapper         *utils.ExitCodeMapper // maps exit codes to messages
 }
 
-// interface guard
-var _ rexec.Client[RunOption] = (*Client)(nil)
-
+// NewClient dials the SSH server using cfg, retrying on failure,
+// and starts a keepalive loop. Returns an SSH Client or error
 func NewClient(cfg *Config) (*Client, error) {
 
 	sshCfg, err := cfg.ClientConfig()
@@ -74,7 +73,7 @@ func NewClient(cfg *Config) (*Client, error) {
 	return cl, nil
 }
 
-// keepalive sends a no-reply request at keepAlive intervals to keep TCP alive.
+// keepalive periodically sends a no-op request to keep the TCP connection alive
 func (cl *Client) keepalive() {
 	t := time.NewTicker(cl.cfg.keepAlive)
 	defer t.Stop()
@@ -90,19 +89,20 @@ func (cl *Client) keepalive() {
 	}
 }
 
-// Session a wrapper over *gossh.Session that
-// frees a slot from sessionLimiter when closed.
+// Session wraps gossh.Session to release a session slot when closed
 type Session struct {
 	*gossh.Session
-	client *Client
+	client *Client // parent client to signal limiter
 }
 
+// Close closes the SSH session and frees a slot in sessionLimiter
 func (w *Session) Close() error {
 	err := w.Session.Close()
 	<-w.client.sessionLimiter
 	return err
 }
 
+// OpenSession acquires a session slot, opens a new SSH session, or returns an error
 func (cl *Client) OpenSession(ctx context.Context) (*Session, error) {
 	select {
 	case cl.sessionLimiter <- struct{}{}:
@@ -121,6 +121,8 @@ func (cl *Client) OpenSession(ctx context.Context) (*Session, error) {
 	return &Session{Session: sess, client: cl}, nil
 }
 
+// Run executes cmd on the remote host, captures stdout/stderr, exit code, and duration,
+// and applies cmd.Parser to dst if provided
 func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts ...RunOption) (*parser.RawResult, error) {
 	if cl == nil || cl.client == nil {
 		return nil, utils.ErrSessionNotOpen
@@ -233,7 +235,7 @@ func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts .
 	return result, result.Err
 }
 
-// Close - close client
+// Close shuts down keepalive and closes the SSH connection
 func (cl *Client) Close() error {
 	cl.closeOnce.Do(func() {
 		close(cl.keepAliveChan)
@@ -241,7 +243,7 @@ func (cl *Client) Close() error {
 	return cl.client.Close()
 }
 
-// requiresPTY - check if command need PTY
+// requiresPTY returns true if shellCmd needs a PTY (e.g., sudo or interactive tools)
 func (cl *Client) requiresPTY(shellCmd string) bool {
 	keywords := []string{"sudo", "passwd", "su", "ssh", "docker login", "openssl"}
 	for _, keyword := range keywords {
@@ -253,6 +255,7 @@ func (cl *Client) requiresPTY(shellCmd string) bool {
 
 }
 
+// recoverSession catches panics during Run and records them in result.Err
 func (cl *Client) recoverSession(result *parser.RawResult, err *error) {
 	if r := recover(); r != nil {
 		*err = fmt.Errorf("recovered from panic on run: %v\n%s", r, debug.Stack())
@@ -261,6 +264,7 @@ func (cl *Client) recoverSession(result *parser.RawResult, err *error) {
 	}
 }
 
+// requestPTY asks the server for a pseudo-terminal if runCfg.usePTY is true
 func (cl *Client) requestPTY(sess *gossh.Session, runCfg *runConfig) error {
 	const (
 		term   = "xterm"
@@ -285,6 +289,8 @@ func (cl *Client) requestPTY(sess *gossh.Session, runCfg *runConfig) error {
 	return nil
 }
 
+// handleStdout reads lines from stdoutPipe, writes them to stdout writer,
+// and automatically responds to password prompts using sudoPassword
 func (cl *Client) handleStdout(stdoutPipe io.Reader, stdinPipe io.Writer, stdout io.Writer) {
 	passwordPrompt := regexp.MustCompile(`(?i)password\s*:`)
 	scanner := bufio.NewScanner(stdoutPipe)

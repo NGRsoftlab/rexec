@@ -10,13 +10,15 @@ import (
 	"github.com/ngrsoftlab/rexec"
 )
 
-type Transfer struct {
-}
+// Transfer implements FileTransfer by writing files to the local filesystem
+type Transfer struct{}
 
+// NewTransfer creates a Transfer for local file operations
 func NewTransfer() *Transfer {
 	return &Transfer{}
 }
 
+// Copy validates spec and writes the file locally.
 func (lt *Transfer) Copy(ctx context.Context, spec *rexec.FileSpec) error {
 	select {
 	case <-ctx.Done():
@@ -24,13 +26,14 @@ func (lt *Transfer) Copy(ctx context.Context, spec *rexec.FileSpec) error {
 	default:
 	}
 
-	if err := lt.validateFileSpec(spec); err != nil {
+	if err := lt.validate(spec); err != nil {
 		return err
 	}
 
 	return lt.writeFile(spec)
 }
 
+// createDirectory ensures that the given path exists, creating any necessary parent directories with the specified mode
 func (lt *Transfer) createDirectory(path string, mode os.FileMode) error {
 	if err := os.MkdirAll(path, mode); err != nil {
 		return fmt.Errorf("create directory: %w", err)
@@ -38,6 +41,7 @@ func (lt *Transfer) createDirectory(path string, mode os.FileMode) error {
 	return nil
 }
 
+// writeFile writes spec.Content to TargetDir/Filename, creating parent directories and applying file and folder modes
 func (lt *Transfer) writeFile(spec *rexec.FileSpec) error {
 	fullPath := filepath.Join(spec.TargetDir, spec.Filename)
 	parentDir := filepath.Dir(fullPath)
@@ -61,7 +65,9 @@ func (lt *Transfer) writeFile(spec *rexec.FileSpec) error {
 
 }
 
-func (lt *Transfer) validateFileSpec(spec *rexec.FileSpec) error {
+// validate checks that spec is valid and that TargetDir,
+// if it exists, is a directory
+func (lt *Transfer) validate(spec *rexec.FileSpec) error {
 	if err := spec.Validate(); err != nil {
 		return err
 	}

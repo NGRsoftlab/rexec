@@ -10,20 +10,22 @@ import (
 	"github.com/ngrsoftlab/rexec/parser"
 )
 
-// LsEntry represents a single line of `ls -la` output.
+// LsEntry represents one line of `ls -la` output
 type LsEntry struct {
-	Permissions string
-	Links       int
-	Owner       string
-	Group       string
-	Size        int64
-	Month       string
-	Day         string
-	TimeOrYear  string
-	Name        string
+	Permissions string // raw permission string (e.g. "-rw-r--r--")
+	Links       int    // number of hard links
+	Owner       string // file owner name
+	Group       string // file group name
+	Size        int64  // file size in bytes
+	Month       string // month of last modification
+	Day         string // day of month of last modification
+	TimeOrYear  string // time or year of last modification
+	Name        string // file or directory name
 }
 
-// ParsePermissions converts "-rwxr-x---" into os.FileMode bits.
+// ParsePermissions converts Permissions into an os.FileMode value.
+// It interprets the first character as file type and the next
+// nine as owner/group/other permission bits.
 func (e *LsEntry) ParsePermissions() (os.FileMode, error) {
 	permRE := regexp.MustCompile(`^([dlbcp\-s][rwx-]{9})`)
 	m := permRE.FindStringSubmatch(e.Permissions)
@@ -66,11 +68,12 @@ func (e *LsEntry) ParsePermissions() (os.FileMode, error) {
 	return mode, nil
 }
 
-// LsParser implements parser.Parser for `ls -la` output.
+// LsParser implements parser.Parser for `ls -la` output
 type LsParser struct{}
 
-// Parse splits raw.stdout into lines, skips the total line,
-// and fills dst.(*[]LsEntry) with parsed entries.
+// Parse reads raw.Stdout, skips the "total" header line,
+// splits each data line into fields, and appends parsed LsEntry items
+// to dst.(*[]LsEntry). Returns an error if dst is not the correct type
 func (p *LsParser) Parse(raw *parser.RawResult, dst any) error {
 	slicePtr, ok := dst.(*[]LsEntry)
 	if !ok {

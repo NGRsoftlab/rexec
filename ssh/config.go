@@ -11,36 +11,36 @@ import (
 )
 
 const (
-	defaultMaxSessions = 1
-	defaultRetryCount  = 3
-	defaultTimeout     = 30 * time.Second
-	defaultRetryDelay  = 5 * time.Second
-	defaultKeepAlive   = 30 * time.Second
+	defaultMaxSessions = 1                // default maximum concurrent SSH sessions
+	defaultRetryCount  = 3                // default number of connection retries
+	defaultTimeout     = 30 * time.Second // default dial timeout
+	defaultRetryDelay  = 5 * time.Second  // default delay between retry attempts
+	defaultKeepAlive   = 30 * time.Second // default TCP keepalive interval
 )
 
+// ConfigOption customizes SSH Config settings
 type ConfigOption func(*Config) error
 
-// Config contains settings for an SSH connection
+// Config holds settings for establishing and managing an SSH connection
 type Config struct {
-	Host           string        // *ip
-	Port           int           // *Port
-	User           string        // *username
-	timeout        time.Duration // dial timeout
-	retryCount     int           // reconnect attempts
-	retryInterval  time.Duration // delay between retries
-	keepAlive      time.Duration // TCP keepalive interval
-	knownHostsPath string        // optional path to known_hosts file to check real SSH Host keys
-	// workDir        string // optional, set workdir on Host
-	sudoPassword  string            // optional, sudo password
-	envVars       map[string]string // remote env vars wrappers
-	remoteWorkdir string            // optional workdir
-	maxSessions   int               // optional max sessions. if someone want to run commands in parallel
+	Host           string            // *remote host IP or hostname
+	Port           int               // *SSH port number
+	User           string            // *SSH username
+	timeout        time.Duration     //  dial timeout duration
+	retryCount     int               // reconnect attempts
+	retryInterval  time.Duration     // delay between retries
+	keepAlive      time.Duration     // TCP keepalive interval
+	knownHostsPath string            // path to known_hosts for host key verification
+	sudoPassword   string            // optional: password for sudo operations on remote host
+	envVars        map[string]string // environment variables to set on remote session
+	remoteWorkdir  string            // optional: working directory on the remote host
+	maxSessions    int               // optional: max concurrent sessions per connection
 
-	auth *auth // auth settings
+	auth *auth // authentication settings
 }
 
-// NewConfig creates a new config with defaults and applies any number of configOption.
-// Returns an error if any option is invalid or required fields are missing.
+// NewConfig creates a Config with required user, host, port and applies any options.
+// Returns an error if any option fails or required fields are invalid
 func NewConfig(user, host string, port int, opts ...ConfigOption) (*Config, error) {
 	cfg := &Config{
 		Host:          host,
@@ -69,7 +69,7 @@ func NewConfig(user, host string, port int, opts ...ConfigOption) (*Config, erro
 
 // ===== SSHOptions =====
 
-// WithPort overrides the default SSH Port.
+// WithPort overrides the SSH port
 func WithPort(p int) ConfigOption {
 	return func(cfg *Config) error {
 		if p < 0 || p > 65535 {
@@ -80,7 +80,7 @@ func WithPort(p int) ConfigOption {
 	}
 }
 
-// WithTimeout sets a custom dial timeout
+// WithTimeout sets the dial timeout
 func WithTimeout(timeout time.Duration) ConfigOption {
 	return func(cfg *Config) error {
 		if timeout <= 0 {
@@ -91,7 +91,7 @@ func WithTimeout(timeout time.Duration) ConfigOption {
 	}
 }
 
-// WithRetry sets how many times to retry dialing and the interval between retries
+// WithRetry sets connection retry count and interval
 func WithRetry(count int, interval time.Duration) ConfigOption {
 	return func(cfg *Config) error {
 		if count < 0 || interval < 0 {
@@ -103,7 +103,7 @@ func WithRetry(count int, interval time.Duration) ConfigOption {
 	}
 }
 
-// WithKeepAlive sets a custom TCP keepalive interval
+// WithKeepAlive sets the TCP keepalive interval
 func WithKeepAlive(keepAlive time.Duration) ConfigOption {
 	return func(cfg *Config) error {
 		if keepAlive <= 0 {
@@ -114,7 +114,7 @@ func WithKeepAlive(keepAlive time.Duration) ConfigOption {
 	}
 }
 
-// WithSudoPassword sets the password to use for sudo -S on the remote Host
+// WithSudoPassword configures a password for sudo -S on the remote host
 func WithSudoPassword(password string) ConfigOption {
 	return func(cfg *Config) error {
 		if password == "" {
@@ -135,7 +135,7 @@ func WithEnvVars(envVars map[string]string) ConfigOption {
 	}
 }
 
-// WithKnownHosts sets the path to a known_hosts file for server key verification
+// WithKnownHosts sets the path to a known_hosts file for host key checking
 func WithKnownHosts(path string) ConfigOption {
 	return func(cfg *Config) error {
 		if path == "" {
@@ -149,6 +149,7 @@ func WithKnownHosts(path string) ConfigOption {
 	}
 }
 
+// WithWorkdir sets the remote working directory
 func WithWorkdir(path string) ConfigOption {
 	return func(cfg *Config) error {
 		if path == "" {
@@ -160,46 +161,46 @@ func WithWorkdir(path string) ConfigOption {
 }
 
 // WithMaxSessions - set max concurrent sessions for connection. You can see it on host in /etc/ssh/sshd_config.
-// Recommend value is from 1 to 4
+// Recommend value between 1 and 4
 func WithMaxSessions(maxSessions int) ConfigOption {
 	return func(cfg *Config) error {
-		if maxSessions <= 0 || maxSessions > 10 {
-			return fmt.Errorf("max sessions must be between 1 and 10")
+		if maxSessions <= 0 || maxSessions > 6 {
+			return fmt.Errorf("max sessions must be between 1 and 6")
 		}
 		cfg.maxSessions = maxSessions
 		return nil
 	}
 }
 
-// WithAgentAuth enables authentication via the local SSH agent
+// WithAgentAuth enables SSH agent-based authentication
 func WithAgentAuth() ConfigOption {
 	return func(cfg *Config) error {
 		return cfg.auth.withAgent()
 	}
 }
 
-// WithKeyBytesAuth enables in-memory private key authentication
+// WithKeyBytesAuth enables private key authentication using in-memory key bytes
 func WithKeyBytesAuth(keyBytes []byte, passphrase string) ConfigOption {
 	return func(cfg *Config) error {
 		return cfg.auth.withPrivateKeyBytes(keyBytes, passphrase)
 	}
 }
 
-// WithPrivateKeyPathAuth enables file-based private key authentication
+// WithPrivateKeyPathAuth enables private key authentication from a file
 func WithPrivateKeyPathAuth(path, passphrase string) ConfigOption {
 	return func(cfg *Config) error {
 		return cfg.auth.withPrivateKeyPath(path, passphrase)
 	}
 }
 
-// WithPasswordAuth enables password-based authentication
+// WithPasswordAuth enables password-based SSH authentication
 func WithPasswordAuth(password string) ConfigOption {
 	return func(cfg *Config) error {
 		return cfg.auth.withPassword(password)
 	}
 }
 
-// validate checks that required fields in Config are set
+// validate ensures required Config fields are set correctly
 func (c *Config) validate() error {
 	if len(c.User) == 0 {
 		return fmt.Errorf("user required")
@@ -241,8 +242,8 @@ func (c *Config) ClientConfig() (*ssh.ClientConfig, error) {
 	return clientConfig, nil
 }
 
-// hostKeyCallback returns a Host key verification function based on knownHostsPath,
-// or ssh.InsecureIgnoreHostKey if none specified
+// hostKeyCallback returns a HostKeyCallback based on knownHostsPath,
+// or ssh.InsecureIgnoreHostKey if none is specified
 func (c *Config) hostKeyCallback() (ssh.HostKeyCallback, error) {
 	hostCallback := ssh.InsecureIgnoreHostKey()
 	if len(c.knownHostsPath) > 0 {

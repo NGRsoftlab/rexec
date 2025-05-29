@@ -13,17 +13,19 @@ import (
 )
 
 const (
-	defaultSFTPBufferSize = 2 << 14
-	defaultSFTPDirMode    = 0o755
+	defaultSFTPBufferSize = 2 << 14 // default 32 KB transfer buffer
+	defaultSFTPDirMode    = 0o755   // default mode for created directories
 )
 
+// SFTPOption customizes SFTP transfer behavior
 type SFTPOption func(*sftpConfig)
 
 type sftpConfig struct {
-	bufferSize int
-	folderMode os.FileMode
+	bufferSize int         // size for copy buffer
+	folderMode os.FileMode // mode for directories
 }
 
+// newSFTPConfig builds a config using spec.FolderMode (if non-zero) and opts
 func newSFTPConfig(mode os.FileMode, opts ...SFTPOption) *sftpConfig {
 	cfg := &sftpConfig{
 		bufferSize: defaultSFTPBufferSize,
@@ -50,14 +52,18 @@ func WithSFTPBufferSize(n int) SFTPOption {
 	}
 }
 
+// SFTPTransfer implements FileTransfer over SSH using the SFTP subsystem
 type SFTPTransfer struct {
 	client *Client
 }
 
+// NewSFTPTransfer creates an SFTPTransfer tied to the given SSH client
 func NewSFTPTransfer(client *Client) *SFTPTransfer {
 	return &SFTPTransfer{client: client}
 }
 
+// Copy uploads spec.Content to spec.TargetDir on the remote host via SFTP.
+// It creates directories, writes the file, and applies permissions
 func (t *SFTPTransfer) Copy(ctx context.Context, spec *rexec.FileSpec, opts ...SFTPOption) error {
 	if err := spec.Validate(); err != nil {
 		return err
@@ -121,6 +127,8 @@ func (t *SFTPTransfer) Copy(ctx context.Context, spec *rexec.FileSpec, opts ...S
 
 }
 
+// openSFTPSession starts an SSH session, requests the "sftp" subsystem,
+// and returns a sftp.Client over the session pipes
 func (t *SFTPTransfer) openSFTPSession(ctx context.Context) (*sftp.Client, *Session, error) {
 	sess, err := t.client.OpenSession(ctx)
 	if err != nil {

@@ -17,17 +17,16 @@ import (
 	"github.com/ngrsoftlab/rexec/utils"
 )
 
-// interface guard
+// interface guard. ensure Client implements rexec.Client
 var _ rexec.Client[RunOption] = (*Client)(nil)
 
-// Client execute commands on the local machine
+// Client runs commands on the local machine
 type Client struct {
-	cfg    *Config
-	mapper *utils.ExitCodeMapper
+	cfg    *Config               // execution settings (workdir, env, etc.)
+	mapper *utils.ExitCodeMapper // maps exit codes to user-friendly messages
 }
 
-// NewClient creates a LocalSession with the given config
-// If cfg==nil - config.NewConfig() will be used
+// NewClient returns a Client using cfg, or defaults if cfg is nil
 func NewClient(cfg *Config) *Client {
 	if cfg == nil {
 		cfg = NewConfig()
@@ -35,7 +34,8 @@ func NewClient(cfg *Config) *Client {
 	return &Client{cfg: cfg, mapper: utils.NewDefaultExitCodeMapper()}
 }
 
-// Run executes cmd and returns RawResult and an error. If cmd.Parser != nil && dst != nil, return parsed result in var
+// Run executes cmd, captures stdout/stderr and duration,
+// then applies cmd.Parser to dst if provided
 func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts ...RunOption) (*parser.RawResult, error) {
 	var err error
 	shellCmd := cmd.String()
@@ -68,29 +68,27 @@ func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts .
 	return result, err
 }
 
-// Close does nothing for the local session.
+// Close releases resources (no-op for local execution).
 func (cl *Client) Close() error {
 	return nil
 }
 
-// prepareCommandContext builds *exec.Cmd for “sh -c <cmd>”,
-// sets the working directory and environment from localRunConfig.
+// prepareCommandContext builds an exec.Cmd for “sh -c <cmd.String()>”, setting working directory and environment from cfg.
 func (cl *Client) prepareCommandContext(ctx context.Context, cmd *command.Command, cfg *localRunConfig) *exec.Cmd {
 	execCmd := exec.CommandContext(ctx, "sh", "-c", cmd.String())
-	// change workdir
 	execCmd.Dir = cfg.dir
 
-	// settle environment
+	// merge os environment with cfg.envVars
 	env := os.Environ()
 	for k, v := range cfg.envVars {
-		env = append(env, fmt.Sprintf("%cl=%cl", k, v))
+		env = append(env, fmt.Sprintf("%s=%q", k, v))
 	}
 	execCmd.Env = env
 
 	return execCmd
 }
 
-// runAndCapture runs cmd.Run(), measures time, fills raw.stdout/raw.stderr,
+// runAndCapture runs c.Run(), records duration, fills rawResult.Stdout, rawResult.Stderr and ExitCode
 func (cl *Client) runAndCapture(ctx context.Context, cfg *localRunConfig, c *exec.Cmd, rawResult *parser.RawResult) error {
 	var outBuf, errBuf bytes.Buffer
 
@@ -150,7 +148,7 @@ func (cl *Client) runAndCapture(ctx context.Context, cfg *localRunConfig, c *exe
 	return nil
 }
 
-// applyParser calls cmd.Parser.Parse(raw, dst) if Parser != nil.
+// applyParser invokes cmd.Parser.Parse on result into dst if both are set
 func (cl *Client) applyParser(result *parser.RawResult, cmd *command.Command, dst any) error {
 	if cmd.Parser != nil && dst != nil {
 		if parseErr := cmd.Parser.Parse(result, dst); parseErr != nil {

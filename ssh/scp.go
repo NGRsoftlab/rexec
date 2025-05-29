@@ -17,19 +17,21 @@ import (
 )
 
 const (
-	defaultSCPBufferSize = 2 << 14
-	defaultSCPDirMode    = 0o755
+	defaultSCPBufferSize = 2 << 14 // default 32 KB buffer for I/O
+	defaultSCPDirMode    = 0o755   // default permission for created directories
 )
 
-// SCPOption configures SCPTransfer behavior
+// SCPOption customizes scpConfig for a transfer
 type SCPOption func(config *scpConfig)
 
+// scpConfig holds settings for SCP transfer commands
 type scpConfig struct {
-	scpBinPath string      // full path to scp binary
-	bufSize    int         // buffer size for bufio
+	scpBinPath string      // path to the scp executable
+	bufSize    int         // size for bufio reader/writer
 	folderMode os.FileMode // mode for intermediate directories
 }
 
+// newScpConfig creates a config using spec.FolderMode (if >0) and applies opts
 func newScpConfig(mode os.FileMode, opts ...SCPOption) *scpConfig {
 	cfg := &scpConfig{
 		folderMode: defaultSCPDirMode,
@@ -47,7 +49,7 @@ func newScpConfig(mode os.FileMode, opts ...SCPOption) *scpConfig {
 	return cfg
 }
 
-// WithScpBinPath sets the path to the scp binary (default "scp")
+// WithScpBinPath sets a custom scp binary path
 func WithScpBinPath(path string) SCPOption {
 	return func(config *scpConfig) {
 		if path != "" {
@@ -56,7 +58,7 @@ func WithScpBinPath(path string) SCPOption {
 	}
 }
 
-// WithBufferSize sets the internal bufio buffer size (default 32KB)
+// WithBufferSize sets a custom bufio buffer size
 func WithBufferSize(bufSize int) SCPOption {
 	return func(config *scpConfig) {
 		if bufSize > 0 {
@@ -65,17 +67,19 @@ func WithBufferSize(bufSize int) SCPOption {
 	}
 }
 
-// SCPTransfer implements rexec.FileTransfer over SSH using SCP protocol
+// SCPTransfer implements FileTransfer by piping data through `scp -t`
 type SCPTransfer struct {
-	client *Client
+	client *Client // underlying SSH client
 }
 
-// NewSCPTransfer constructs a new SCPTransfer
+// NewSCPTransfer initializes an SCPTransfer using an SSH client
 func NewSCPTransfer(client *Client) *SCPTransfer {
 	return &SCPTransfer{client: client}
 }
 
-// Copy transfers a file or directory to the remote host using scp -t
+// Copy uploads spec.Content to the remote host via scp.
+// It ensures the remote directory exists, starts scp in "to" mode,
+// then sends file header, data, and handles acknowledgments
 func (t *SCPTransfer) Copy(ctx context.Context, spec *rexec.FileSpec, opts ...SCPOption) error {
 	if err := spec.Validate(); err != nil {
 		return err
@@ -158,7 +162,7 @@ func (t *SCPTransfer) Copy(ctx context.Context, spec *rexec.FileSpec, opts ...SC
 	return nil
 }
 
-// sendFile send  C<mode> <size> <filename>\n → ACK → data → \x00 → ACK
+// sendFile follows SCP protocol: header → ACK → data → EOF byte → ACK
 func sendFile(ctx context.Context, spec *rexec.FileSpec, w *bufio.Writer, r *bufio.Reader) error {
 	reader, size, err := spec.Content.ReaderAndSize()
 	if err != nil {
@@ -197,7 +201,7 @@ func sendFile(ctx context.Context, spec *rexec.FileSpec, w *bufio.Writer, r *buf
 	return nil
 }
 
-// readAck reads one byte and checks that it is 0; otherwise reads an error message
+// readAck reads one status byte and returns error if non-zero
 func readAck(ctx context.Context, r *bufio.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return ctx.Err()
@@ -219,7 +223,7 @@ var bufPool = sync.Pool{
 	},
 }
 
-// copyWithContext reads from src and writes to dst, responding to a ctx cancel
+// copyWithContext copies from src to dst in chunks, aborting on context cancel
 func copyWithContext(ctx context.Context, src io.Reader, dst io.Writer) error {
 	buf := bufPool.Get().([]byte)
 	defer bufPool.Put(buf)
@@ -242,7 +246,7 @@ func copyWithContext(ctx context.Context, src io.Reader, dst io.Writer) error {
 	}
 }
 
-// escapeShellPath escapes the path for safe use in single quotes
+// escapeShellPath safely quotes a path for sh single-quoted strings
 func escapeShellPath(path string) string {
 	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }

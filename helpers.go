@@ -7,7 +7,8 @@ import (
 	"github.com/ngrsoftlab/rexec/utils"
 )
 
-// RunNoResult runs cmd and returns only an error (no stdout/stderr)
+// RunNoResult executes cmd using client, ignoring stdout/stderr.
+// Returns any execution error
 func RunNoResult[O any](ctx context.Context, client Client[O], cmd *command.Command, opts ...O) error {
 	if client == nil {
 		return utils.ErrClientNil
@@ -16,7 +17,7 @@ func RunNoResult[O any](ctx context.Context, client Client[O], cmd *command.Comm
 	return err
 }
 
-// RunRaw runs cmd and returns its stdout, stderr, exit code and error
+// RunRaw executes cmd and returns its stdout, stderr, exit code, and error
 func RunRaw[O any](ctx context.Context, client Client[O], cmd *command.Command, opts ...O) (stdout string,
 	stderr string, exitCode int, err error) {
 	if client == nil {
@@ -26,7 +27,7 @@ func RunRaw[O any](ctx context.Context, client Client[O], cmd *command.Command, 
 	return rr.Stdout, rr.Stderr, rr.ExitCode, err
 }
 
-// RunParse [T] runs cmd, parses into a T, and returns the typed result
+// RunParse executes cmd, parses its output into dst of type T, and returns dst and any error
 func RunParse[O, T any](ctx context.Context, client Client[O], cmd *command.Command, opts ...O) (dst T, err error) {
 	if client == nil {
 		return dst, utils.ErrClientNil

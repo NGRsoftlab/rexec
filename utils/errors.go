@@ -6,16 +6,16 @@ import (
 )
 
 var (
-	ErrSessionClosed  = errors.New("session closed")
 	ErrSessionNotOpen = errors.New("session not open")
 	ErrClientNil      = errors.New("client is nil")
-	ErrContextDone    = errors.New("context cancelled or deadline exceeded")
 )
 
+// ExitCodeMapper translates process exit codes into human-readable messages
 type ExitCodeMapper struct {
 	codes map[int]string
 }
 
+// NewDefaultExitCodeMapper returns an ExitCodeMapper initialized with common shell and system exit code messages
 func NewDefaultExitCodeMapper() *ExitCodeMapper {
 	return &ExitCodeMapper{codes: map[int]string{
 		1:   "general error",
@@ -60,10 +60,12 @@ func NewDefaultExitCodeMapper() *ExitCodeMapper {
 	}}
 }
 
-const maxSignal = 64
+const maxSignal = 64 // highest signal number to consider
 
-// Lookup returns a message for code, or “exit <code>” if unknown.
-// Also handles 129–255 as “killed by signal <N>”.
+// Lookup returns a descriptive message for the given exit code.
+// If the code is in the predefined map, that message is used.
+// Codes 129–(128+maxSignal) map to "killed by signal N".
+// All others default to "exit <code>".
 func (em *ExitCodeMapper) Lookup(code int) string {
 	if msg, ok := em.codes[code]; ok {
 		return msg
