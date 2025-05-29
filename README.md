@@ -12,6 +12,20 @@ By running ad-hoc commands and interpreting their results, you receive immediate
 5. outputting the result from a Go structure.
 
 ```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"path"
+	"time"
+	
+	"github.com/ngrsoftlab/rexec"
+	"github.com/ngrsoftlab/rexec/command"
+	"github.com/ngrsoftlab/rexec/parser/examples"
+	"github.com/ngrsoftlab/rexec/ssh"
+)
+
 func main() {
 	// 1. setting up ssh client
 	sshCfg, err := ssh.NewConfig(

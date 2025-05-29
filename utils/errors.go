@@ -1,3 +1,5 @@
+// Copyright © NGRSoftlab 2020-2025
+
 package utils
 
 import (
