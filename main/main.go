@@ -1,119 +1,86 @@
+// Copyright © NGRSoftlab 2020-2025
+
 package main
 
 import (
 	"context"
 	"fmt"
-	"os"
-	"sort"
+	"path"
 	"time"
 
 	"github.com/ngrsoftlab/rexec"
 	"github.com/ngrsoftlab/rexec/command"
-	"github.com/ngrsoftlab/rexec/config"
 	"github.com/ngrsoftlab/rexec/parser/examples"
+	"github.com/ngrsoftlab/rexec/ssh"
 )
 
 func main() {
-
-	localConfig := config.NewLocalConfig().
-		WithWorkDir("/tmp").
-		WithEnvVars(map[string]string{
-			"GREETING": "Hi",
-			"TARGET":   "Developer",
-		})
-
-	sess := rexec.NewLocalSession(localConfig)
-
-	touchCommand := command.New("touch %s && echo $(pwd)", command.WithArgs("demo.txt"))
-	touchResult, err := sess.Run(context.Background(), touchCommand, nil)
+	// 1. setting ip ssh client
+	sshCfg, err := ssh.NewConfig(
+		"alice", "example.ip", 22, // to test - change credits
+		ssh.WithPasswordAuth("secret"),
+		ssh.WithRetry(3, 5*time.Second),
+		ssh.WithKeepAlive(30*time.Second),
+	)
 	if err != nil {
-		fmt.Printf("create file failed: %v\nstderr: %s\n", err, touchResult.Stderr)
-	} else {
-		fmt.Printf("Created demo.txt\nWorkdir is: %s", touchResult.Stdout)
+		panic(err)
+	}
+	client, err := ssh.NewClient(sshCfg)
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	ctx := context.Background()
+
+	// 2. upload file by SFTP
+	data := []byte("Hello, rexec!")
+	remoteDir := "/tmp/rexec"
+	fileName := "hello.txt"
+	spec := &rexec.FileSpec{
+		TargetDir:  remoteDir,
+		Filename:   fileName,
+		Mode:       0644,
+		FolderMode: 0755,
+		Content:    &rexec.FileContent{Data: data},
+	}
+	// scp := ssh.NewSCPTransfer(client) // switch protocol is so simple
+	sftp := ssh.NewSFTPTransfer(client)
+	if err := sftp.Copy(ctx, spec); err != nil {
+		panic(err)
 	}
 
-	checkFileExistsCommand := command.New(`[ -f %s ] && echo true || echo false`,
-		command.WithParser(&examples.PathExistence{}),
-		command.WithArgs("demo.txt"),
-	)
-
+	// 3. check uploaded file existence
 	var exists bool
-	checkFileResult, err := sess.Run(context.Background(), checkFileExistsCommand, &exists)
-	if err != nil {
-		fmt.Printf("exists check failed: %v\nstderr: %s\n", err, checkFileResult.Stderr)
-	} else {
-		fmt.Printf("demo.txt exists: %t (exit code %d)\n", exists, checkFileResult.ExitCode)
-	}
-
-	printEnvCommand := command.New(`echo "$GREETING, $TARGET!" Working dir: $(pwd)`)
-	printEnvResult, err := sess.Run(
-		context.Background(),
-		printEnvCommand,
-		nil,
-		rexec.WithWorkdir("/home"),
-		rexec.WithEnvVar("TARGET", "Analytics"),
+	remotePath := path.Join(remoteDir, fileName)
+	cmdExist := command.New(
+		"test -f %s && echo true || echo false",
+		command.WithArgs(remotePath),
+		command.WithParser(&examples.PathExistence{}),
 	)
+	exists, err = rexec.RunParse[ssh.RunOption, bool](ctx, client, cmdExist)
 	if err != nil {
-		fmt.Printf("print failed: %v\nstderr: %s\n", err, printEnvResult.Stderr)
-	} else {
-		fmt.Printf("%s", printEnvResult.Stdout)
+		panic(err)
 	}
+	fmt.Printf("Exists: %v\n", exists)
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	sleepCommand := command.New("sleep 2")
-	if sleepResult, err := sess.Run(timeoutCtx, sleepCommand, nil); err != nil {
-		fmt.Printf("timeout as expected: %v (exit %d)\n", err, sleepResult.ExitCode)
-	} else {
-		fmt.Printf("sleep finished (unexpected): %s\n", sleepResult.Stdout)
-	}
-
-	f, _ := os.Create("out.log")
-	defer f.Close()
-
-	lsCommand := command.New("ls -la %s",
-		command.WithParser(&examples.LsParser{}),
-		command.WithArgs("/home/asysoyev"),
-	)
-
+	// 4. gathering details of uploaded file
 	var entries []examples.LsEntry
-	lsResult, err := sess.Run(context.Background(), lsCommand, &entries)
+	cmdLs := command.New(
+		"ls -la %s",
+		command.WithArgs(remotePath),
+		command.WithParser(&examples.LsParser{}),
+	)
+	entries, err = rexec.RunParse[ssh.RunOption, []examples.LsEntry](ctx, client, cmdLs)
 	if err != nil {
-		fmt.Printf("ls failed: %v\nstderr: %s\n", err, lsResult.Stderr)
-		return
+		panic(err)
 	}
 
-	stats := make(map[string]struct {
-		Count     int
-		TotalSize int64
-	})
-
-	for _, entry := range entries {
-		mode, err := entry.ParsePermissions()
-		if err != nil {
-			fmt.Printf("failed to parse permissions: %v\n", err)
-		}
-
-		if !mode.IsRegular() {
-			continue
-		}
-
-		s := stats[entry.Owner]
-		s.Count++
-		s.TotalSize += entry.Size
-		stats[entry.Owner] = s
-	}
-
-	owners := make([]string, 0, len(stats))
-	for owner := range stats {
-		owners = append(owners, owner)
-	}
-	sort.Strings(owners)
-
-	fmt.Printf("%-10s %-11s %s\n", "OWNER", "FILES_COUNT", "TOTAL_SIZE")
-	for _, owner := range owners {
-		s := stats[owner]
-		fmt.Printf("%-10s %-11d %d\n", owner, s.Count, s.TotalSize)
+	// 5. print result
+	if len(entries) > 0 {
+		e := entries[0]
+		fmt.Printf("File: %s\n", e.Name)
+		fmt.Printf("Owner: %s\n", e.Owner)
+		fmt.Printf("Created: %s %s %s\n", e.Month, e.Day, e.TimeOrYear)
 	}
 }

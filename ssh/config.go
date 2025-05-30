@@ -74,7 +74,7 @@ func NewConfig(user, host string, port int, opts ...ConfigOption) (*Config, erro
 // WithPort overrides the SSH port
 func WithPort(p int) ConfigOption {
 	return func(cfg *Config) error {
-		if p < 0 || p > 65535 {
+		if p <= 0 || p > 65535 {
 			return fmt.Errorf("port must be 1-65535")
 		}
 		cfg.Port = p

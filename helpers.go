@@ -26,6 +26,9 @@ func RunRaw[O any](ctx context.Context, client Client[O], cmd *command.Command, 
 		return "", "", -1, utils.ErrClientNil
 	}
 	rr, err := client.Run(ctx, cmd, nil, opts...)
+	if rr == nil {
+		return "", "", -1, err
+	}
 	return rr.Stdout, rr.Stderr, rr.ExitCode, err
 }
 
