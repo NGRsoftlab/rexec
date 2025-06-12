@@ -53,7 +53,7 @@ func ParseWithMapping(results map[*command.Command]*parser.RawResult, dstMap map
 		}
 		rawResult, ok := results[cmd]
 		if !ok || rawResult == nil {
-			return fmt.Errorf("raw result for cmd %q not found", cmd.String())
+			continue
 		}
 
 		if cmd.Parser == nil {
