@@ -8,6 +8,8 @@ import (
 	"github.com/ngrsoftlab/rexec/parser"
 )
 
+var _ parser.CommandInfo = (*Command)(nil)
+
 // CmdOption defines a function that applies configuration to a Command
 type CmdOption func(*Command)
 

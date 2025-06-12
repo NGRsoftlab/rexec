@@ -130,7 +130,7 @@ func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts .
 		return nil, utils.ErrSessionNotOpen
 	}
 
-	result := parser.NewRawResult(cmd.String())
+	result := parser.NewRawResult(cmd)
 
 	var err error
 	defer cl.recoverSession(result, &err)

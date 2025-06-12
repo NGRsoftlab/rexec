@@ -17,14 +17,15 @@ func TestPathExistence_Parse(t *testing.T) {
 		{"true_lower", "true", true},
 		{"true_upper_space", " TRUE \n", true},
 		{"false_lower", "false", false},
-		{"random", "yes", false},
+		{"text", "yes", true},
+		{"upper_text", "F", false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			raw := &parser.RawResult{Stdout: tc.output}
 			var got bool
-			if err := (&PathExistence{}).Parse(raw, &got); err != nil {
+			if err := (&BoolParser{}).Parse(raw, &got); err != nil {
 				t.Fatalf("%s: unexpected error %v", tc.name, err)
 			}
 			if got != tc.want {

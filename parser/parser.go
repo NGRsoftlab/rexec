@@ -11,9 +11,14 @@ type Parser interface {
 	Parse(rawResult *RawResult, dst any) error
 }
 
+// CommandInfo defines the minimal interface that identifies a Command.
+type CommandInfo interface {
+	String() string
+}
+
 // RawResult holds the outcome of running a command
 type RawResult struct {
-	Command  string        // the exact command string executed
+	CmdPtr   CommandInfo   // command.Command pointer
 	Stdout   string        // collected standard output
 	Stderr   string        // collected standard error
 	ExitCode int           // process exit code
@@ -22,9 +27,9 @@ type RawResult struct {
 }
 
 // NewRawResult initializes a RawResult for the given shell command
-func NewRawResult(shellCmd string) *RawResult {
+func NewRawResult(cmdPtr CommandInfo) *RawResult {
 	return &RawResult{
-		Command:  shellCmd,
+		CmdPtr:   cmdPtr,
 		Stdout:   "",
 		Stderr:   "",
 		ExitCode: 0,

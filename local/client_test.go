@@ -100,7 +100,7 @@ func TestRunAndCapture(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.CommandContext(context.Background(), "sh", "-c", strings.Join(tc.commands, " "))
-			rr := parser.NewRawResult(strings.Join(tc.commands, " "))
+			rr := parser.NewRawResult(command.New(strings.Join(tc.commands, " ")))
 			err := cl.runAndCapture(context.Background(), cfg, cmd, rr)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err = %v; wantErr %v", err, tc.wantErr)
@@ -127,6 +127,9 @@ type errParser struct{}
 func (errParser) Parse(raw *parser.RawResult, dst any) error { return errors.New("parse failed") }
 
 func TestApplyParser(t *testing.T) {
+	echoCmd := command.New("echo")
+	nopCmd := command.New("", command.WithParser(nopParser{}))
+	errCmd := command.New("", command.WithParser(errParser{}))
 	cl := NewClient(nil)
 	tests := []struct {
 		name    string
@@ -135,10 +138,10 @@ func TestApplyParser(t *testing.T) {
 		dst     *int
 		wantErr bool
 	}{
-		{"no_parser", parser.NewRawResult(""), command.New("echo"), new(int), false},
-		{"nil_dst", parser.NewRawResult(""), &command.Command{Template: "", Parser: nopParser{}}, nil, false},
-		{"parser_error", parser.NewRawResult(""), &command.Command{Template: "", Parser: errParser{}}, new(int), true},
-		{"parser_success", parser.NewRawResult(""), &command.Command{Template: "", Parser: nopParser{}}, new(int), false},
+		{"no_parser", parser.NewRawResult(echoCmd), echoCmd, new(int), false},
+		{"nil_dst", parser.NewRawResult(nopCmd), nopCmd, nil, false},
+		{"parser_error", parser.NewRawResult(errCmd), errCmd, new(int), true},
+		{"parser_success", parser.NewRawResult(nopCmd), nopCmd, new(int), false},
 	}
 
 	for _, tc := range tests {

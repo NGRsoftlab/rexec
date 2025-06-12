@@ -40,8 +40,7 @@ func NewClient(cfg *Config) *Client {
 // then applies cmd.Parser to dst if provided
 func (cl *Client) Run(ctx context.Context, cmd *command.Command, dst any, opts ...RunOption) (*parser.RawResult, error) {
 	var err error
-	shellCmd := cmd.String()
-	result := parser.NewRawResult(shellCmd)
+	result := parser.NewRawResult(cmd)
 
 	defer func() {
 		if r := recover(); r != nil {

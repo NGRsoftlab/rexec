@@ -10,6 +10,7 @@ import (
 
 	"github.com/ngrsoftlab/rexec"
 	"github.com/ngrsoftlab/rexec/command"
+	"github.com/ngrsoftlab/rexec/parser"
 	"github.com/ngrsoftlab/rexec/parser/examples"
 	"github.com/ngrsoftlab/rexec/ssh"
 )
@@ -56,7 +57,7 @@ func main() {
 	cmdExist := command.New(
 		"test -f %s && echo true || echo false",
 		command.WithArgs(remotePath),
-		command.WithParser(&examples.PathExistence{}),
+		command.WithParser(&examples.BoolParser{}),
 	)
 	exists, err = rexec.RunParse[ssh.RunOption, bool](ctx, client, cmdExist)
 	if err != nil {
@@ -82,5 +83,51 @@ func main() {
 		fmt.Printf("File: %s\n", e.Name)
 		fmt.Printf("Owner: %s\n", e.Owner)
 		fmt.Printf("Created: %s %s %s\n", e.Month, e.Day, e.TimeOrYear)
+	}
+
+	// PARSING RESULTS IN VARS FORM BATCH EXECUTION
+
+	cmdList := []*command.Command{
+		cmdExist,
+		cmdLs,
+	}
+
+	results := make([]*parser.RawResult, 0, len(cmdList))
+	for _, cmd := range cmdList {
+		res, err := client.Run(ctx, cmd, nil)
+		if err != nil {
+			panic(err)
+		}
+		results = append(results, res)
+	}
+
+	var boolVar bool
+	var lsEntries []examples.LsEntry
+
+	mappingVars := map[*command.Command]any{
+		cmdLs:    &lsEntries,
+		cmdExist: &boolVar,
+	}
+
+	if err := rexec.ApplyParsers(results, mappingVars); err != nil {
+		panic(err)
+	}
+
+	// OR YOU CAN MANUALLY CREATE COMMAND->RAWRESULT MAPPING
+
+	rawMap := make(map[*command.Command]*parser.RawResult, len(results))
+	for i, cmd := range cmdList {
+		rawMap[cmd] = results[i]
+	}
+
+	if err := rexec.ParseWithMapping(rawMap, mappingVars); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Exists: %v\n", boolVar)
+	if len(lsEntries) > 0 {
+		e := lsEntries[0]
+		fmt.Printf("File: %s, Owner: %s, Created: %s %s %s\n",
+			e.Name, e.Owner, e.Month, e.Day, e.TimeOrYear)
 	}
 }
